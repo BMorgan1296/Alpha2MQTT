@@ -64,7 +64,7 @@ Each of the schedules can be customised to report a number* / any combination of
 
 *See maximum payload size above.
 
-You can customise the schedules by modifying Alpha2MQTT.ino.  Search for 'Schedules' and add or remove registers as you see fit from each schedule.  The list of supported registers begins on line 85 in Definitions.h.  A register name which contains _R_ is read only, one which contains _RW_ is read/write, and one which contains _W_ is write only.
+You can customise the schedules by modifying src/main.cpp.  Search for 'Schedules' and add or remove registers as you see fit from each schedule.  The list of supported registers begins on line 85 in Definitions.h.  A register name which contains _R_ is read only, one which contains _RW_ is read/write, and one which contains _W_ is write only.
 
 An example response for any subscribed state is a JSON of name/value pairs which are separated by commas, for example:
 {

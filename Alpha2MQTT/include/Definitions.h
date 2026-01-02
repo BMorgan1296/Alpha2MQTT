@@ -14,12 +14,7 @@ Customise these options as per README.txt.  Please read README.txt before contin
 #ifndef _Definitions_h
 #define _Definitions_h
 
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
-#else
-	#include "WProgram.h"
-#endif
-
+#include <Arduino.h>
 
 /*************************************************/
 /* Start customizations here.                    */
@@ -28,7 +23,8 @@ Customise these options as per README.txt.  Please read README.txt before contin
 // Compiling for ESP8266 or ESP32?
 #define MP_ESP32
 //#define MP_ESP8266
-#define MP_XIAO_ESP32C6
+//#define MP_XIAO_ESP32C6
+#define MP_ESPUNO_ESP32C6
 
 // Display parameters - Set LARGE_DISPLAY for 128x64 oled
 // Don't set this if using the ESP8266 OLED Shield 64x48 display.
@@ -154,13 +150,17 @@ Customise these options as per README.txt.  Please read README.txt before contin
 /* Shouldn't need to change anything below this. */
 /*************************************************/
 
-#if defined MP_XIAO_ESP32C6 && ! defined MP_ESP32
+#if defined MP_XIAO_ESP32C6 && ! defined MP_ESP32 || defined MP_ESPUNO_ESP32C6 && ! defined MP_ESP32
 #define MP_ESP32
 #endif // MP_XIAO_ESP32C6 && ! MP_ESP32
 
 #ifdef MP_XIAO_ESP32C6
 #define BUTTON_PIN 9 // BOOT/GPIO9
 #endif // MP_XIAO_ESP32C6
+
+#ifdef MP_ESPUNO_ESP32C6
+#define BUTTON_PIN 9
+#endif // MP_ESPUNO_ESP32C6
 
 #if (!defined MP_ESP8266) && (!defined MP_ESP32)
 #error You must specify the microprocessor in use
@@ -1126,7 +1126,8 @@ Customise these options as per README.txt.  Please read README.txt before contin
 #define BATTERY_WARNING_BIT_12 "bms_fan_err"
 
 // Frame and Function Codes
-#define MAX_FRAME_SIZE_ZERO_INDEXED 63
+#define MAX_FRAME_SIZE 64
+#define MAX_FRAME_SIZE_ZERO_INDEXED (MAX_FRAME_SIZE - 1)
 #define MIN_FRAME_SIZE_ZERO_INDEXED 4
 #define MAX_FRAME_SIZE_RESPONSE_WRITE_SUCCESS_ZERO_INDEXED 7
 
@@ -1240,7 +1241,7 @@ enum modbusRequestAndResponseStatusValues
 struct modbusRequestAndResponse
 {
 	//uint8_t errorLevel;
-	uint8_t data[MAX_FRAME_SIZE_ZERO_INDEXED] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
+	uint8_t data[MAX_FRAME_SIZE] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
 	uint8_t dataSize = 0;
 	uint8_t functionCode = 0;
 

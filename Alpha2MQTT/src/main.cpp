@@ -26,9 +26,14 @@ First, go and customise options at the top of Definitions.h!
 #elif defined MP_ESP32
 #include <WiFi.h>
 #include <WebServer.h>
-#ifndef MP_XIAO_ESP32C6
-#define LED_BUILTIN 2
-#endif // ! MP_XIAO_ESP32C6
+  #if defined(MP_ESPUNO_ESP32C6)
+  #ifdef LED_BUILTIN
+  #undef LED_BUILTIN
+  #endif // LED_BUILTIN
+  #define LED_BUILTIN 8
+  #elif !defined(MP_XIAO_ESP32C6)
+  #define LED_BUILTIN 2
+  #endif // MP_ESPUNO_ESP32C6, !MP_XIAO_ESP32C6
 #endif
 #include <DNSServer.h>
 #include <WiFiManager.h>
@@ -85,9 +90,9 @@ struct Config {
 	int mqttPort;
 	String mqttUser;
 	String mqttPass;
-#ifdef MP_XIAO_ESP32C6
+#if defined(MP_XIAO_ESP32C6) || defined(MP_ESPUNO_ESP32C6)
 	bool extAntenna;
-#endif // MP_XIAO_ESP32C6
+#endif // MP_XIAO_ESP32C6 || MP_ESPUNO_ESP32C6
 };
 
 Config config;
@@ -225,6 +230,31 @@ Adafruit_SSD1306 _display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 0);
 Adafruit_SSD1306 _display(OLED_RST_PIN);
 #endif // LARGE_DISPLAY
 
+// Forward declarations (required for PlatformIO)
+void updateOLED(bool justStatus, const char* line2, const char* line3, const char* line4);
+void configLoop(void);
+void configHandler(void);
+void setupWifi(bool initialConnect);
+void mqttReconnect(void);
+void mqttCallback(char* topic, byte* message, unsigned int length);
+void sendHaData(void);
+void getA2mOpDataFromEss(void);
+bool readEssOpData(void);
+void sendData(void);
+void updateRunstate(void);
+uint32_t getUptimeSeconds(void);
+void emptyPayload(void);
+void sendMqtt(const char*, bool);
+void sendDataFromMqttState(mqttState*, bool);
+void checkAndSetDispatchMode(void);
+void printWifiBars(int rssi);
+void getOpModeDesc(char *dest, size_t size, enum opMode mode);
+void getInverterModeDesc(char *dest, size_t size, uint16_t inverterMode);
+modbusRequestAndResponseStatusValues addToPayload(const char*);
+enum gridStatus isGridOnline();
+enum opMode lookupOpMode(const char*);
+modbusRequestAndResponseStatusValues getSerialNumber();
+
 /*
  * setup
  *
@@ -259,6 +289,10 @@ void setup()
 #endif // BUTTON_PIN
 
 	// Wire.setClock(10000);
+#ifdef MP_ESPUNO_ESP32C6
+	delay(1000);          // give USB boot time to settle
+	Wire.begin(6, 7);
+#endif // MP_ESPUNO_ESP32C6
 
 	// Display time
 	_display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);  // initialize OLED
@@ -281,7 +315,9 @@ void setup()
 	config.mqttPort = preferences.getInt("MQTT_Port", 0);
 	config.mqttUser = preferences.getString("MQTT_Username", "");
 	config.mqttPass = preferences.getString("MQTT_Password", "");
-#ifdef MP_XIAO_ESP32C6
+#if defined(MP_XIAO_ESP32C6)
+	config.extAntenna = preferences.getBool("Ext_Antenna", false);
+#elif defined(MP_ESPUNO_ESP32C6)
 	config.extAntenna = preferences.getBool("Ext_Antenna", false);
 #endif // MP_XIAO_ESP32C6
 	preferences.end();
@@ -478,6 +514,10 @@ configHandler(void)
 	const char _customHtml_checkbox[] = "type=\"checkbox\"";
 	WiFiManagerParameter custom_ext_ant("ext_antenna", "Use external WiFi antenna\n", "T", 2, _customHtml_checkbox, WFM_LABEL_AFTER);
 #endif // MP_XIAO_ESP32C6
+#ifdef MP_ESPUNO_ESP32C6
+	const char _customHtml_checkbox[] = "type=\"checkbox\"";
+	WiFiManagerParameter custom_ext_ant("ext_antenna", "Use external WiFi antenna\n", "T", 2, _customHtml_checkbox, WFM_LABEL_AFTER);
+#endif // MP_ESPUNO_ESP32C6
 
 	WiFi.disconnect(true, true); // Disconnect and erase saved WiFi config
 	updateOLED(false, "Web", "config", "active");
@@ -485,6 +525,9 @@ configHandler(void)
 #ifdef MP_XIAO_ESP32C6
 	wifiManager.addParameter(&custom_ext_ant);
 #endif // MP_XIAO_ESP32C6
+#ifdef MP_ESPUNO_ESP32C6
+	wifiManager.addParameter(&custom_ext_ant);
+#endif // MP_ESPUNO_ESP32C6
 	wifiManager.addParameter(&p_lineBreak_text);
 	wifiManager.addParameter(&custom_mqtt_server);
 	wifiManager.addParameter(&custom_mqtt_port);
@@ -525,6 +568,12 @@ configHandler(void)
 		preferences.putBool("Ext_Antenna", extAnt[0] == 'T');
 	}
 #endif // MP_XIAO_ESP32C6
+#ifdef MP_ESPUNO_ESP32C6
+	{
+		const char *extAnt = custom_ext_ant.getValue();
+		preferences.putBool("Ext_Antenna", extAnt[0] == 'T');
+	}
+#endif // MP_ESPUNO_ESP32C6
 	preferences.end();
 
 	delay(1000);
@@ -647,13 +696,23 @@ setupWifi(bool initialConnect)
 	if (initialConnect) {
 		WiFi.disconnect(); // If it auto-started, restart it our way.
 		delay(100);
+#if defined(MP_XIAO_ESP32C6) || defined(MP_ESPUNO_ESP32C6)
+		bool useExtAntenna = false;
 #ifdef MP_XIAO_ESP32C6
+		useExtAntenna = config.extAntenna;
+#else // MP_XIAO_ESP32C6
+		useExtAntenna = config.extAntenna;
+#endif // MP_XIAO_ESP32C6
+#ifdef WIFI_ENABLE
 		pinMode(WIFI_ENABLE, OUTPUT);
 		digitalWrite(WIFI_ENABLE, LOW);
 		delay(100);
+#endif // WIFI_ENABLE
+#ifdef WIFI_ANT_CONFIG
 		pinMode(WIFI_ANT_CONFIG, OUTPUT);
-		digitalWrite(WIFI_ANT_CONFIG, config.extAntenna ? HIGH : LOW);
-#endif // MP_XIAO_ESP32C6
+		digitalWrite(WIFI_ANT_CONFIG, useExtAntenna ? HIGH : LOW);
+#endif // WIFI_ANT_CONFIG
+#endif // MP_XIAO_ESP32C6 || MP_ESPUNO_ESP32C6
 #ifdef DEBUG_WIFI
 	} else {
 		wifiReconnects++;
@@ -3137,7 +3196,7 @@ getOpModeDesc(char *dest, size_t size, enum opMode mode)
 }
 
 enum opMode
-lookupOpMode(char *opModeDesc)
+lookupOpMode(const char *opModeDesc)
 {
 	if (!strcmp(opModeDesc, OP_MODE_DESC_PV_CHARGE))
 		return opMode::opModePvCharge;

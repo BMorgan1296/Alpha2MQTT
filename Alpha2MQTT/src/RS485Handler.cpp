@@ -259,7 +259,7 @@ Returns data in a stucture and returns a result to guide onward processing.
 */
 modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestAndResponse* resp)
 {
-	uint8_t inFrame[MAX_FRAME_SIZE_ZERO_INDEXED];
+	uint8_t inFrame[MAX_FRAME_SIZE];
 	uint8_t inByteNumZeroIndexed = 0;
 	uint8_t inExpectedTotalBytesZeroIndexed = 0;
 	bool gotSlaveID = false;
@@ -267,6 +267,7 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 	bool gotData = false;
 	bool timedOut = false;
 	bool breakOut = false;
+	bool frameTooLarge = false;
 
 	modbusRequestAndResponse dummy;
 	modbusRequestAndResponseStatusValues result = modbusRequestAndResponseStatusValues::preProcessing;
@@ -343,10 +344,15 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 #endif
 				
 				resp->dataSize = 1;
-				inExpectedTotalBytesZeroIndexed++;
-			}
-			else
-			{
+					inExpectedTotalBytesZeroIndexed++;
+					if (inExpectedTotalBytesZeroIndexed > MAX_FRAME_SIZE_ZERO_INDEXED) {
+						frameTooLarge = true;
+						breakOut = true;
+						break;
+					}
+				}
+				else
+				{
 				// Success
 				// 
 				// If a write success, we know expected bytes 
@@ -358,6 +364,11 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 					// In case of single register, high byte address (1), low byte address (1), high byte of data (1), low byte of data (1), (2)*crc
 					// In case of data register, high byte address (1), low byte address (1), high byte of reg count (1), low byte of reg count (1), (2)*crc
 					inExpectedTotalBytesZeroIndexed = MAX_FRAME_SIZE_RESPONSE_WRITE_SUCCESS_ZERO_INDEXED;
+					if (inExpectedTotalBytesZeroIndexed > MAX_FRAME_SIZE_ZERO_INDEXED) {
+						frameTooLarge = true;
+						breakOut = true;
+						break;
+					}
 					resp->dataSize = 4;
 				}
 				else
@@ -383,6 +394,11 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 					// slave + func + numbytes + 2 + 2 crc = 7 bytes, which is 0 to 6 when zero indexed
 					// And 7 takeaway 3 bytes received is 4
 					inExpectedTotalBytesZeroIndexed = inFrame[inByteNumZeroIndexed] + 4;
+					if (inExpectedTotalBytesZeroIndexed > MAX_FRAME_SIZE_ZERO_INDEXED) {
+						frameTooLarge = true;
+						breakOut = true;
+						break;
+					}
 
 				}
 			}
@@ -393,14 +409,21 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 		{
 			gotData = true;
 			// If reading there's an extra byte in the form of data length
+			uint8_t dataIndex = 0;
 			if (resp->functionCode == MODBUS_FN_READDATAREGISTER)
 			{
-				resp->data[inByteNumZeroIndexed - 3] = inFrame[inByteNumZeroIndexed];
+				dataIndex = inByteNumZeroIndexed - 3;
 			}
 			else
 			{
-				resp->data[inByteNumZeroIndexed - 2] = inFrame[inByteNumZeroIndexed];
+				dataIndex = inByteNumZeroIndexed - 2;
 			}
+			if (dataIndex >= MAX_FRAME_SIZE) {
+				frameTooLarge = true;
+				breakOut = true;
+				break;
+			}
+			resp->data[dataIndex] = inFrame[inByteNumZeroIndexed];
 		}
 		}
 
@@ -434,6 +457,15 @@ modbusRequestAndResponseStatusValues RS485Handler::listenResponse(modbusRequestA
 #endif
 	}
 
+	if (frameTooLarge) {
+		result = modbusRequestAndResponseStatusValues::invalidFrame;
+		strcpy(resp->statusMqttMessage, MODBUS_REQUEST_AND_RESPONSE_INVALID_FRAME_MQTT_DESC);
+		strcpy(resp->displayMessage, MODBUS_REQUEST_AND_RESPONSE_INVALID_FRAME_DISPLAY_DESC);
+#ifdef DEBUG_OUTPUT_TX_RX
+		outputFrameToSerial(false, inFrame, inByteNumZeroIndexed);
+#endif
+		return result;
+	}
 
 
 
