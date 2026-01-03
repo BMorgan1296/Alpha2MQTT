@@ -21,10 +21,7 @@ Customise these options as per README.txt.  Please read README.txt before contin
 /*************************************************/
 
 // Compiling for ESP8266 or ESP32?
-#define MP_ESP32
-//#define MP_ESP8266
-//#define MP_XIAO_ESP32C6
-#define MP_ESPUNO_ESP32C6
+// Managed in platformio.ini via build flags.
 
 // Display parameters - Set LARGE_DISPLAY for 128x64 oled
 // Don't set this if using the ESP8266 OLED Shield 64x48 display.

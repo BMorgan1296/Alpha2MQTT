@@ -26,14 +26,14 @@ First, go and customise options at the top of Definitions.h!
 #elif defined MP_ESP32
 #include <WiFi.h>
 #include <WebServer.h>
-  #if defined(MP_ESPUNO_ESP32C6)
-  #ifdef LED_BUILTIN
-  #undef LED_BUILTIN
-  #endif // LED_BUILTIN
-  #define LED_BUILTIN 8
-  #elif !defined(MP_XIAO_ESP32C6)
-  #define LED_BUILTIN 2
-  #endif // MP_ESPUNO_ESP32C6, !MP_XIAO_ESP32C6
+#if defined(MP_ESPUNO_ESP32C6)
+#ifdef LED_BUILTIN
+#undef LED_BUILTIN
+#endif // LED_BUILTIN
+#define LED_BUILTIN 8
+#elif !defined(MP_XIAO_ESP32C6)
+#define LED_BUILTIN 2
+#endif // MP_ESPUNO_ESP32C6, !MP_XIAO_ESP32C6
 #endif
 #include <DNSServer.h>
 #include <WiFiManager.h>
@@ -43,6 +43,9 @@ First, go and customise options at the top of Definitions.h!
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#ifdef MP_ESPUNO_ESP32C6
+#include <Adafruit_NeoPixel.h>
+#endif // MP_ESPUNO_ESP32C6
 
 #define popcount __builtin_popcount
 
@@ -122,6 +125,11 @@ uint32_t rs485Errors = 0;
 #ifdef DEBUG_OPS
 uint32_t opCounter = 0;
 #endif // DEBUG_OPS
+
+#ifdef MP_ESPUNO_ESP32C6
+Adafruit_NeoPixel _statusPixel(1, LED_BUILTIN, NEO_GRB + NEO_KHZ800);
+uint32_t _statusLedColor = 0;
+#endif // MP_ESPUNO_ESP32C6
 
 //#define OP_DATA_AVG_CNT 4
 #define PUSH_FUDGE_FACTOR 200 // Watts
@@ -254,6 +262,9 @@ modbusRequestAndResponseStatusValues addToPayload(const char*);
 enum gridStatus isGridOnline();
 enum opMode lookupOpMode(const char*);
 modbusRequestAndResponseStatusValues getSerialNumber();
+void setStatusLed(bool on);
+void setStatusLedColor(uint8_t red, uint8_t green, uint8_t blue);
+void updateStatusLed(void);
 
 /*
  * setup
@@ -279,8 +290,17 @@ void setup()
 	Serial.begin(9600);
 #endif // DEBUG_OVER_SERIAL || DEBUG_LEVEL2 || DEBUG_OUTPUT_TX_RX
 
+#ifdef MP_ESPUNO_ESP32C6
+	_statusPixel.begin();
+	_statusPixel.clear();
+	_statusPixel.show();
+	setStatusLedColor(0, 0, 255);
+	setStatusLed(false);
+#else // MP_ESPUNO_ESP32C6
 	// Configure LED for output
 	pinMode(LED_BUILTIN, OUTPUT);
+#endif // MP_ESPUNO_ESP32C6
+
 	
 #ifdef BUTTON_PIN
 	// Configure the user push button
@@ -467,6 +487,7 @@ void
 configLoop(void)
 {
 	bool flip = false;
+	bool ledOn = false;
 
 #ifdef DEBUG_OVER_SERIAL
 	Serial.println("Configuration is not set.");
@@ -484,6 +505,8 @@ configLoop(void)
 		} else {
 			updateOLED(false, "Push", "button.", line4);
 		}
+		ledOn = !ledOn;
+		setStatusLed(ledOn);
 
 		// Read button state
 		if (digitalRead(BUTTON_PIN) == LOW) {
@@ -614,6 +637,8 @@ loop()
 		mqttReconnect();
 		resendHaData = true;
 	}
+
+	updateStatusLed();
 
 	// Check and display the runstate on the display
 	updateRunstate();
@@ -1040,9 +1065,9 @@ getSerialNumber()
 	delay(4000);
 
 	//Flash the LED
-	digitalWrite(LED_BUILTIN, LOW);
+	setStatusLed(true);
 	delay(4);
-	digitalWrite(LED_BUILTIN, HIGH);
+	setStatusLed(false);
 
 	return result;
 }
@@ -1069,9 +1094,9 @@ updateRunstate()
 
 	if (checkTimer(&lastRun, RUNSTATE_INTERVAL)) {
 		//Flash the LED
-		digitalWrite(LED_BUILTIN, LOW);
+		setStatusLed(true);
 		delay(4);
-		digitalWrite(LED_BUILTIN, HIGH);
+		setStatusLed(false);
 
 		if (!opData.essRs485Connected) {
 			strcpy(line2, "RS485");
@@ -1220,9 +1245,9 @@ void updateRunstate()
 
 	if (checkTimer(&lastRun, RUNSTATE_INTERVAL)) {
 		//Flash the LED
-		digitalWrite(LED_BUILTIN, LOW);
+		setStatusLed(true);
 		delay(4);
-		digitalWrite(LED_BUILTIN, HIGH);
+		setStatusLed(false);
 
 		if (!opData.essRs485Connected) {
 			strcpy(line2, "RS485");
@@ -1392,6 +1417,7 @@ mqttReconnect(void)
 		delay(5000);
 	}
 	// Connected, so ditch out with runstate on the screen, update some diags
+	setStatusLedColor(0, 255, 0);
 	updateRunstate();
 }
 
@@ -3415,3 +3441,42 @@ uint32_t freeMemory()
 	return ESP.getFreeHeap();
 }
 #endif // DEBUG_FREEMEM
+
+void
+setStatusLed(bool on)
+{
+#ifdef MP_ESPUNO_ESP32C6
+	uint32_t color = on ? _statusLedColor : 0;
+	_statusPixel.setPixelColor(0, color);
+	_statusPixel.show();
+#else // MP_ESPUNO_ESP32C6
+	digitalWrite(LED_BUILTIN, on ? LOW : HIGH);
+#endif // MP_ESPUNO_ESP32C6
+}
+
+void
+setStatusLedColor(uint8_t red, uint8_t green, uint8_t blue)
+{
+#ifdef MP_ESPUNO_ESP32C6
+	_statusLedColor = _statusPixel.Color(red, green, blue);
+	_statusPixel.setPixelColor(0, _statusLedColor);
+	_statusPixel.show();
+#else // MP_ESPUNO_ESP32C6
+	bool on = (red != 0) || (green != 0) || (blue != 0);
+	digitalWrite(LED_BUILTIN, on ? LOW : HIGH);
+#endif // MP_ESPUNO_ESP32C6
+}
+
+void
+updateStatusLed(void)
+{
+	if (WiFi.status() != WL_CONNECTED) {
+		setStatusLedColor(255, 0, 0);
+	} else if (!_mqtt.connected()) {
+		setStatusLedColor(255, 255, 0);
+	} else if (!opData.essRs485Connected) {
+		setStatusLedColor(128, 0, 128);
+	} else {
+		setStatusLedColor(0, 255, 0);
+	}
+}

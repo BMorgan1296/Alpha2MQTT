@@ -50,6 +50,26 @@ Configure Alpha2MQTT by opening up Definitions.h and verifying/customising the f
 - Set whether the device should auto restart every so many hours.  This is for specific routers only.  Uncomment line 70 if you want to use this feature
 - Set the number of hours for an automatic restart on line 71
 
+PlatformIO Targets (ESPuno / XIAO / ESP8266):
+==============================================
+This project includes PlatformIO environments for ESPuno (ESP32-C6), Seeed XIAO ESP32C6 (untested), and ESP8266 (untested).
+Use one of the following targets when building:
+
+- ESPuno Pi Zero: uses MP_ESPUNO_ESP32C6 board definition and supports the onboard NeoPixel on pin 8.
+- xiao_esp32c6: uses MP_XIAO_ESP32C6 board definition.
+- esp8266: uses MP_ESP8266 board definition and standard PlatformIO ESP8266.
+
+The ESPuno target requires a custom Arduino-compatible ESP32 platform in platformio.ini, and the Seeed XIAO uses the Seed Studio support repo for PlatformIO.
+
+ESPuno Status LED:
+==================
+On ESPuno, the status LED is a NeoPixel on pin 8. The status color reflects system state:
+- Red when WiFi is disconnected.
+- Yellow when WiFi is connected but MQTT is disconnected.
+- Purple when WiFi and MQTT are connected but RS485 is disconnected.
+- Green when WiFi, MQTT, and RS485 are all connected.
+Other boards continue to use LED_BUILTIN as a simple on/off indicator.
+
 States:
 =======
 To receive information from any of the repeating schedules, subscribe your MQTT client to:
